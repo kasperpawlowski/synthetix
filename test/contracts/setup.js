@@ -229,10 +229,8 @@ const setupContract = async ({
 		SynthetixBridgeEscrow: [owner],
 		RewardsDistribution: [
 			owner,
-			tryGetAddressOf('Synthetix'),
-			tryGetAddressOf('ProxyERC20Synthetix'),
-			tryGetAddressOf('RewardEscrowV2'),
-			tryGetAddressOf('ProxyFeePool'),
+			ZERO_ADDRESS,
+			ZERO_ADDRESS,
 		],
 		RewardEscrow: [owner, tryGetAddressOf('Synthetix'), tryGetAddressOf('FeePool')],
 		BaseRewardEscrowV2: [owner, tryGetAddressOf('AddressResolver')],
@@ -774,7 +772,7 @@ const setupAllContracts = async ({
 		},
 		{
 			contract: 'RewardsDistribution',
-			mocks: ['Synthetix', 'FeePool', 'RewardEscrow', 'RewardEscrowV2', 'ProxyFeePool'],
+			mocks: [],
 		},
 		{ contract: 'Depot', deps: ['AddressResolver', 'SystemStatus'] },
 		{ contract: 'SynthUtil', deps: ['AddressResolver'] },
@@ -1129,7 +1127,7 @@ const setupAllContracts = async ({
 	// get list of resolver aliases from declared contracts
 	const namesResolvedThroughAlias = contractNamesRequested
 		.map(contractName => baseContracts.find(({ contract }) => contract === contractName))
-		.map(({ resolverAlias }) => resolverAlias)
+		.map((resolverAlias) => resolverAlias?.resolverAlias)
 		.filter(resolverAlias => !!resolverAlias);
 
 	// now go through all contracts and compile a list of them and all nested dependencies

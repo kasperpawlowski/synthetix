@@ -28,16 +28,6 @@ contract RewardsDistribution is Owned, IRewardsDistribution {
     address public synthetixProxy;
 
     /**
-     * @notice Address of the RewardEscrow contract
-     */
-    address public rewardEscrow;
-
-    /**
-     * @notice Address of the FeePoolProxy
-     */
-    address public feePoolProxy;
-
-    /**
      * @notice An array of addresses and amounts to send
      */
     DistributionData[] public distributions;
@@ -49,28 +39,16 @@ contract RewardsDistribution is Owned, IRewardsDistribution {
     constructor(
         address _owner,
         address _authority,
-        address _synthetixProxy,
-        address _rewardEscrow,
-        address _feePoolProxy
+        address _synthetixProxy
     ) public Owned(_owner) {
         authority = _authority;
         synthetixProxy = _synthetixProxy;
-        rewardEscrow = _rewardEscrow;
-        feePoolProxy = _feePoolProxy;
     }
 
     // ========== EXTERNAL SETTERS ==========
 
     function setSynthetixProxy(address _synthetixProxy) external onlyOwner {
         synthetixProxy = _synthetixProxy;
-    }
-
-    function setRewardEscrow(address _rewardEscrow) external onlyOwner {
-        rewardEscrow = _rewardEscrow;
-    }
-
-    function setFeePoolProxy(address _feePoolProxy) external onlyOwner {
-        feePoolProxy = _feePoolProxy;
     }
 
     /**
@@ -144,21 +122,15 @@ contract RewardsDistribution is Owned, IRewardsDistribution {
     function distributeRewards(uint amount) external returns (bool) {
         require(amount > 0, "Nothing to distribute");
         require(msg.sender == authority, "Caller is not authorised");
-        require(rewardEscrow != address(0), "RewardEscrow is not set");
         require(synthetixProxy != address(0), "SynthetixProxy is not set");
-        require(feePoolProxy != address(0), "FeePoolProxy is not set");
         require(
             IERC20(synthetixProxy).balanceOf(address(this)) >= amount,
             "RewardsDistribution contract does not have enough tokens to distribute"
         );
 
-        uint remainder = amount;
-
         // Iterate the array of distributions sending the configured amounts
         for (uint i = 0; i < distributions.length; i++) {
             if (distributions[i].destination != address(0) || distributions[i].amount != 0) {
-                remainder = remainder.sub(distributions[i].amount);
-
                 // Transfer the SNX
                 IERC20(synthetixProxy).transfer(distributions[i].destination, distributions[i].amount);
 
@@ -173,12 +145,6 @@ contract RewardsDistribution is Owned, IRewardsDistribution {
                 }
             }
         }
-
-        // After all ditributions have been sent, send the remainder to the RewardsEscrow contract
-        IERC20(synthetixProxy).transfer(rewardEscrow, remainder);
-
-        // Tell the FeePool how much it has to distribute to the stakers
-        IFeePool(feePoolProxy).setRewardsToDistribute(remainder);
 
         emit RewardsDistributed(amount);
         return true;

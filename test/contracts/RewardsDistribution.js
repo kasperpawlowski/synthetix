@@ -13,7 +13,7 @@ const {
 	constants: { ZERO_ADDRESS },
 } = require('../..');
 
-const { setupAllContracts } = require('./setup');
+const { setupAllContracts, mockToken } = require('./setup');
 
 contract('RewardsDistribution', async accounts => {
 	const [
@@ -28,22 +28,30 @@ contract('RewardsDistribution', async accounts => {
 		account5,
 	] = accounts;
 
-	let rewardsDistribution, synthetix, synthetixProxy, feePool, mockRewardsRecipient;
+	let rewardsDistribution, synthetix, mockRewardsRecipient;
 
-	before(async () => {
+	before(async () => {	
+		let { proxy } = await mockToken({
+			accounts,
+			name: 'Reward Token',
+			symbol: 'RWRD',
+		});
+
 		({
-			RewardsDistribution: rewardsDistribution,
-			FeePool: feePool,
-			Synthetix: synthetix,
-			ProxyERC20Synthetix: synthetixProxy,
+			RewardsDistribution: rewardsDistribution
 		} = await setupAllContracts({
 			accounts,
-			contracts: ['RewardsDistribution', 'Synthetix', 'FeePool', 'Issuer'],
+			contracts: ['RewardsDistribution'],
 		}));
 
 		// use implementation ABI on the proxy address to simplify calling
-		synthetix = await artifacts.require('Synthetix').at(synthetixProxy.address);
+		synthetix = await artifacts.require('ProxyERC20').at(proxy.address);
 
+		await Promise.all([
+			await rewardsDistribution.setSynthetixProxy(synthetix.address, {from: owner}),
+			await rewardsDistribution.setAuthority(authorityAddress, {from: owner})
+		]);
+		
 		mockRewardsRecipient = await MockRewardsRecipient.new(owner, { from: owner });
 		await mockRewardsRecipient.setRewardsDistribution(rewardsDistribution.address, { from: owner });
 	});
@@ -55,8 +63,6 @@ contract('RewardsDistribution', async accounts => {
 			account1,
 			account2,
 			account3,
-			account4,
-			account5,
 			{
 				from: deployerAccount,
 			}
@@ -65,8 +71,6 @@ contract('RewardsDistribution', async accounts => {
 		assert.equal(await instance.owner(), account1);
 		assert.equal(await instance.authority(), account2);
 		assert.equal(await instance.synthetixProxy(), account3);
-		assert.equal(await instance.rewardEscrow(), account4);
-		assert.equal(await instance.feePoolProxy(), account5);
 	});
 
 	describe('adding Reward Distributions', async () => {
@@ -262,18 +266,8 @@ contract('RewardsDistribution', async accounts => {
 				from: owner,
 			});
 
-			// Set the RewardEscrow Address
-			await rewardsDistribution.setRewardEscrow(rewardEscrowAddress, {
-				from: owner,
-			});
-
 			// Set the SNX Token Transfer Address
 			await rewardsDistribution.setSynthetixProxy(synthetix.address, {
-				from: owner,
-			});
-
-			// Set the FeePool Address
-			await rewardsDistribution.setFeePoolProxy(feePool.address, {
 				from: owner,
 			});
 		});
@@ -341,14 +335,6 @@ contract('RewardsDistribution', async accounts => {
 			// Check Account 2 balance
 			const balanceOfAccount2 = await synthetix.balanceOf(account2);
 			assert.bnEqual(balanceOfAccount2, toUnit('10000'));
-
-			// Check Reward Escrow balance
-			const balanceOfRewardEscrow = await synthetix.balanceOf(rewardEscrowAddress);
-			assert.bnEqual(balanceOfRewardEscrow, toUnit('20000'));
-
-			// Check FeePool has rewards to distribute
-			const recentPeriod = await feePool.recentFeePeriods(0);
-			assert.bnEqual(recentPeriod.rewardsToDistribute, toUnit('20000'));
 		});
 
 		it('should call the notifyRewardAmount on mockRewardsRecipient', async () => {

@@ -1,12 +1,9 @@
 const { contract } = require('hardhat');
 const { toBN } = require('web3-utils');
 
-const { toBytes32 } = require('../..');
 const {
 	onlyGivenAddressCanInvoke,
-	ensureOnlyExpectedMutativeFunctions,
-	setupPriceAggregators,
-	updateAggregatorRates,
+	ensureOnlyExpectedMutativeFunctions
 } = require('./helpers');
 const { assert, addSnapshotBeforeRestoreAfterEach } = require('./common');
 const { mockToken, setupAllContracts, setupContract } = require('./setup');
@@ -19,34 +16,19 @@ contract('StakingRewards', accounts => {
 		owner,
 		,
 		authority,
-		rewardEscrowAddress,
 		stakingAccount1,
 		mockRewardsDistributionAddress,
 	] = accounts;
 
 	// Synthetix is the rewardsToken
 	let rewardsToken,
-		rewardsTokenProxy,
 		stakingToken,
 		externalRewardsToken,
-		exchangeRates,
 		stakingRewards,
-		rewardsDistribution,
-		systemSettings,
-		feePool;
+		rewardsDistribution;
 
 	const DAY = 86400;
 	const ZERO_BN = toBN(0);
-
-	const setRewardsTokenExchangeRate = async ({ rateStaleDays } = { rateStaleDays: 7 }) => {
-		const rewardsTokenIdentifier = await rewardsToken.symbol();
-		const tokenKey = toBytes32(rewardsTokenIdentifier);
-
-		await systemSettings.setRateStalePeriod(DAY * rateStaleDays, { from: owner });
-		await setupPriceAggregators(exchangeRates, owner, [tokenKey]);
-		await updateAggregatorRates(exchangeRates, null, [tokenKey], [toUnit('2')]);
-		assert.equal(await exchangeRates.rateIsStale(tokenKey), false);
-	};
 
 	addSnapshotBeforeRestoreAfterEach();
 
@@ -63,20 +45,21 @@ contract('StakingRewards', accounts => {
 			symbol: 'MOAR',
 		}));
 
+		let { proxy } = await mockToken({
+			accounts,
+			name: 'Reward Token',
+			symbol: 'RWRD',
+		});
+
 		({
 			RewardsDistribution: rewardsDistribution,
-			FeePool: feePool,
-			Synthetix: rewardsToken,
-			ProxyERC20Synthetix: rewardsTokenProxy,
-			ExchangeRates: exchangeRates,
-			SystemSettings: systemSettings,
 		} = await setupAllContracts({
 			accounts,
-			contracts: ['RewardsDistribution', 'Synthetix', 'FeePool', 'SystemSettings'],
+			contracts: ['RewardsDistribution'],
 		}));
 
 		// use implementation ABI on the proxy address to simplify calling
-		rewardsToken = await artifacts.require('Synthetix').at(rewardsTokenProxy.address);
+		rewardsToken = await artifacts.require('ProxyERC20').at(proxy.address);
 
 		stakingRewards = await setupContract({
 			accounts,
@@ -86,15 +69,12 @@ contract('StakingRewards', accounts => {
 
 		await Promise.all([
 			rewardsDistribution.setAuthority(authority, { from: owner }),
-			rewardsDistribution.setRewardEscrow(rewardEscrowAddress, { from: owner }),
 			rewardsDistribution.setSynthetixProxy(rewardsToken.address, { from: owner }),
-			rewardsDistribution.setFeePoolProxy(feePool.address, { from: owner }),
 		]);
 
 		await stakingRewards.setRewardsDistribution(mockRewardsDistributionAddress, {
 			from: owner,
 		});
-		await setRewardsTokenExchangeRate();
 	});
 
 	it('ensure only known functions are mutative', () => {
@@ -381,7 +361,6 @@ contract('StakingRewards', accounts => {
 			await fastForward(DAY * 7);
 			const earnedFirst = await stakingRewards.earned(stakingAccount1);
 
-			await setRewardsTokenExchangeRate();
 			await rewardsToken.transfer(stakingRewards.address, totalToDistribute, { from: owner });
 			await stakingRewards.notifyRewardAmount(totalToDistribute, {
 				from: mockRewardsDistributionAddress,
@@ -640,8 +619,6 @@ contract('StakingRewards', accounts => {
 				from: owner,
 			});
 			assert.equal(await stakingRewards.rewardsDistribution(), rewardsDistribution.address);
-
-			await setRewardsTokenExchangeRate();
 		});
 
 		it('stake and claim', async () => {
